@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.valoliin.mythslegendstranslator.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ForceSpawningUtilsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "plugin": "io.github.valoliin.mythslegendstranslator.mixin.LegacyTranslationPlugin"
+}

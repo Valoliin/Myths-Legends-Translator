@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "mythslegends_translator",
+  "version": "0.5.0-beta.1",
+  "name": "Myths & Legends Translator",
+  "description": "Couche experimentale de traduction API Myths and Legends 1.9.0 vers Cobblemon 1.8.1. Pas de recreation des spawns.",
+  "authors": [
+    "Valoliin (Mioutwo_)"
+  ],
+  "icon": "assets/mythslegends_translator/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "io.github.valoliin.mythslegendstranslator.MythsLegendsTranslator"
+    ]
+  },
+  "mixins": [
+    "mythslegends_translator.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.17.2",
+    "minecraft": "1.21.1",
+    "java": ">=21",
+    "mythsandlegends": "1.9.0",
+    "cobblemon": ">=1.8.1"
+  }
+}
