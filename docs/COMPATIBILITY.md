@@ -1,25 +1,51 @@
-# Spécification de compatibilité (analyse de bytecode)
+# Compatibility internals (Minecraft 1.21.1 / Fabric)
 
-Source : MythsAndLegends-fabric-1.9.0.jar et Cobblemon-fabric-1.8.1+1.21.1.jar fournis par l'utilisateur.
+This document describes the **active** translation approach in Myths & Legends Translator 0.5.x.
 
-## Méthodes rencontrées dans `ForceSpawningUtils.forceSpawnInternal`
+## Supported combination
 
-1. `BestSpawnerConfig.getBuckets(): List` — **supprimée**.
-2. `PlayerSpawner.chooseBucket(SpawnCause, List): SpawnBucket` — nouveau type de retour **String**.
-3. `PlayerSpawner.getMatchingSpawns(SpawnBucket, SpawnablePosition): List` — nouveau premier argument **String**.
-4. `SpawnDetail.getBucket(): SpawnBucket` — nouveau type de retour **String**.
-5. `SpawnDetail.choose(SpawnablePosition, SpawnBucket, SpawnSelectionData): SpawnAction` — deuxième argument désormais **String**.
+- Myths and Legends **1.9.0 Fabric** (built for the Cobblemon 1.7-era spawning API).
+- Cobblemon **1.8.1 Fabric**.
+- Minecraft **1.21.1**, Java **21**, Fabric.
 
-Ces méthodes ont une résolution Java par descripteur ; on ne peut pas simplement ajouter un `catch(NoSuchMethodError)` autour de tous les appels ni changer une méthode Java isolée.
+The compatibility change is localized to `com.github.d0ctorleon.mythsandlegends.utils.ForceSpawningUtils` and its force-spawn implementation. This is not a general-purpose compatibility layer for arbitrary mods or versions.
 
-## Stratégie cible
+## Confirmed differences
 
-- Conserver le code original de sélection, validation et consommation dans Myths and Legends.
-- Traiter les anciens appels en utilisant des injections/redirections ciblées dans le bytecode (Mixins) ou des méthodes de compatibilité ajoutées aux classes cibles.
-- Éviter les copies de classes Cobblemon ; pour le type supprimé `SpawnBucket`, modéliser le contrat minimal requis sans créer de collisions.
-- Garantir les correspondances de catégories et des noms exacts (normalisation uniquement si l'API le permet).
-- Faire passer les tests de démarrage, clés invalides, clés valides, consommation et cooldown, biomes et météo.
+| Myths and Legends expects | Cobblemon 1.8.1 provides | Adapter |
+| --- | --- | --- |
+| `BestSpawnerConfig.getBuckets(): List` | `BestSpawnerConfig.getWorldBuckets(): Map` | `configuredBuckets` |
+| `PlayerSpawner.chooseBucket(...): SpawnBucket` | `PlayerSpawner.chooseBucket(...): String` | `chooseBucket` |
+| `PlayerSpawner.getMatchingSpawns(SpawnBucket, position)` | `getMatchingSpawns(String, position)` | `matchingSpawns` |
+| `SpawnDetail.getBucket(): SpawnBucket` | `SpawnDetail.getBucket(): String` | `detailBucket` |
+| `SpawnDetail.choose(position, SpawnBucket, selection)` | `SpawnDetail.choose(position, String, selection)` | `chooseSpawn` |
+| `SpawnBucket.getName(): String` | Bucket ID is already a String | `bucketName` |
 
-## État d'exécution
+Java links methods by exact descriptors. The problem cannot be solved reliably by catching one `NoSuchMethodError` after it occurs.
 
-**Cette version ne réalise pas encore les cinq adaptations.** Le Mixin temporaire à HEAD neutralise l'ancien chemin qui crashe. `SpawnBucketTranslator` et `SpawnResultTranslator` sont des primitives de futur pont et non un patch branché. Ne pas publier en indiquant « compatible » ou « corrige le spawn ».
+## Active implementation
+
+1. `ForceSpawningUtilsMixin` declares the target class as a pseudo mixin.
+2. `LegacyTranslationPlugin` performs a post-apply ASM pass over `forceSpawnInternal` and related lambda methods. It translates the obsolete `SpawnBucket` type in relevant method descriptors and replaces selected virtual calls with static calls to `LegacyApiBridge`.
+3. `LegacyApiBridge` uses reflective dispatch to invoke methods available at runtime in Cobblemon 1.8.1.
+4. The normal Myths and Legends routine continues, including its own selection logic and subsequent actions.
+
+The plugin fails fast if too few replacements were made, to avoid silently running against an unexpected target class version. Logging indicates how many substitutions were applied.
+
+`SpawnBucketTranslator` and `SpawnResultTranslator` are helper/extension classes, but **not** a complete bidirectional compatibility API. The actual working translator is the combination of the bytecode plugin and `LegacyApiBridge`.
+
+## Diagnostic implementation
+
+`SpawnDiagnostics` uses `UseItemCallback` to identify `mythsandlegends:` items, and reads live resources from the server resource manager under `cobblemon:spawn_pool_world/*.json`. It looks for conditions with `condition.key_item` equal to the item identifier.
+
+It evaluates only biome IDs/tags, the `day`/`night` subset of `timeRange`, and `isThundering`; other conditions are included as unverified text. It returns `TypedActionResult.pass` so the original item-use logic can continue.
+
+The `/mythstranslator` commands are registered through Fabric's command API and require permission level 2; the actions also verify Creative Mode. World time/weather changes are real server-side changes.
+
+## Validation and known gaps
+
+The developer reports approximately ten encounters tested successfully, including a Clear Bell / Ho-Oh encounter in a Flower Forest. Comprehensive coverage is not available yet. Known gaps include unrecognized time ranges, non-evaluated custom conditions, large biome lists, and untested newer versions of either mod.
+
+**Note for source archives based on the original V0.5 draft:** Minecraft 1.21.1/Yarn uses `ServerWorld.getTopY()` rather than `getTopYInclusive()` in `SpawnDiagnostics.java`. The user has already applied that one-line compilation fix locally.
+
+Never vendor, repackage, or include the original Cobblemon/Myths and Legends JARs or datapack in release artifacts.
